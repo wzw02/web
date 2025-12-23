@@ -1,7 +1,6 @@
 from flask import Flask, jsonify
 
-app = Flask(__name__)
-
+# 创建Calculator类或从calculator.py导入
 class Calculator:
     def add(self, a, b):
         return a + b
@@ -17,11 +16,12 @@ class Calculator:
             raise ZeroDivisionError("Division by zero")
         return a / b
 
+app = Flask(__name__)
 calc = Calculator()
 
 @app.route('/')
 def hello_world():
-    return f"Hello, world"
+    return "Hello, world"
 
 @app.route('/health')
 def health_check():

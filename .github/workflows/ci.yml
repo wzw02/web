@@ -22,12 +22,14 @@ jobs:
       run: |
         pip install Flask==2.3.3 pytest pytest-cov
     
-    - name: Run tests
+    - name: Run unit tests
       run: |
         python -m pytest tests/ -v --cov=. --cov-report=xml
     
     - name: Upload coverage
       uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
   
   build-and-test:
     runs-on: ubuntu-latest
@@ -42,26 +44,46 @@ jobs:
     
     - name: Test Docker container
       run: |
+        set -e  # 遇到错误立即退出
+        
+        # 清理可能存在的旧容器
+        docker rm -f test-container 2>/dev/null || true
+        
         # 启动容器
+        echo "Starting container..."
         docker run -d --name test-container -p 5000:5000 web-calculator:latest
         
-        # 等待应用启动（增加等待时间）
+        # 等待应用启动
         echo "Waiting for app to start..."
-        sleep 10
+        for i in {1..30}; do
+          if docker logs test-container 2>&1 | grep -q "Running on"; then
+            echo "App started successfully"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "App failed to start within 60 seconds"
+            docker logs test-container
+            exit 1
+          fi
+          sleep 2
+        done
         
-        # 检查容器日志
-        echo "Container logs:"
-        docker logs test-container
+        # 等待应用完全就绪
+        sleep 3
         
-        # 测试健康检查
-        echo "Testing health endpoint..."
-        docker exec test-container curl -f http://localhost:5000/health || (docker logs test-container && exit 1)
+        # 方法1: 使用主机curl测试（因为容器端口已映射到主机）
+        echo "Testing from host..."
+        curl -f http://localhost:5000/health || (echo "Health check failed" && docker logs test-container && exit 1)
+        curl -f "http://localhost:5000/add/2&3" || (echo "Add endpoint failed" && docker logs test-container && exit 1)
         
-        # 测试计算功能
-        echo "Testing add endpoint..."
-        docker exec test-container curl -f http://localhost:5000/add/2&3 || (docker logs test-container && exit 1)
+        # 方法2: 在容器内测试（现在容器内有curl了）
+        echo "Testing from container..."
+        docker exec test-container curl -f http://localhost:5000/health || (echo "Container health check failed" && docker logs test-container && exit 1)
+        docker exec test-container curl -f "http://localhost:5000/add/2&3" || (echo "Container add endpoint failed" && docker logs test-container && exit 1)
         
         # 清理
         echo "Cleaning up..."
         docker stop test-container
         docker rm test-container
+        
+        echo "All tests passed!"
