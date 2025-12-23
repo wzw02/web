@@ -1,16 +1,63 @@
-# docker-compose.yml 中添加
+version: '3.8'
+
 services:
   nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      app_blue:
+        condition: service_healthy
+      app_green:
+        condition: service_healthy
     networks:
-      - frontend
+      - app_network
+    restart: unless-stopped
+
   app_blue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - APP_COLOR=blue
+    container_name: app_blue
+    environment:
+      - FLASK_ENV=production
+      - APP_COLOR=${BLUE_COLOR}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
-      - frontend
-      - backend
-    expose:
-      - "5000"  # 只暴露给 Nginx，不对外
+      - app_network
+    restart: on-failure
+
+  app_green:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - APP_COLOR=green
+    container_name: app_green
+    environment:
+      - FLASK_ENV=production
+      - APP_COLOR=${GREEN_COLOR}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - app_network
+    restart: on-failure
 
 networks:
-  frontend:
-  backend:
-    internal: true  # 内部网络
+  app_network:
+    driver: bridge

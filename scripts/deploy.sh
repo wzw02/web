@@ -1,107 +1,69 @@
 #!/bin/bash
+
+# 蓝绿部署脚本
 set -e
 
-echo "=== 开始蓝绿部署 ==="
+# 颜色定义
+BLUE="blue"
+GREEN="green"
+ACTIVE=""
+NEW=""
 
-# 确定当前活跃颜色
-if docker ps --filter "name=app_blue" --format "{{.Status}}" | grep -q "Up"; then
-    CURRENT_ACTIVE="blue"
-    NEW_ACTIVE="green"
+# 获取当前活跃版本
+if docker ps --filter "name=app_blue" --format "{{.Names}}" | grep -q "app_blue"; then
+    ACTIVE=$BLUE
+    NEW=$GREEN
 else
-    CURRENT_ACTIVE="green"
-    NEW_ACTIVE="blue"
+    ACTIVE=$GREEN
+    NEW=$BLUE
 fi
 
-echo "当前活跃实例: ${CURRENT_ACTIVE}"
-echo "新部署实例: ${NEW_ACTIVE}"
+echo "当前活跃版本: $ACTIVE"
+echo "将要部署版本: $NEW"
 
-# 启动新实例
-echo "启动 ${NEW_ACTIVE} 实例..."
-docker-compose up -d app_${NEW_ACTIVE}
+# 拉取新版本镜像
+NEW_TAG=$1
+if [ -z "$NEW_TAG" ]; then
+    echo "请输入镜像标签"
+    exit 1
+fi
 
-# 等待新实例健康
-echo "等待 ${NEW_ACTIVE} 实例健康..."
-MAX_WAIT=60
-WAITED=0
-while [ ${WAITED} -lt ${MAX_WAIT} ]; do
-    if docker-compose ps app_${NEW_ACTIVE} | grep -q "(healthy)"; then
-        echo "${NEW_ACTIVE} 实例已健康"
+# 更新docker-compose中的环境变量
+if [ "$NEW" = "blue" ]; then
+    export BLUE_TAG=$NEW_TAG
+else
+    export GREEN_TAG=$NEW_TAG
+fi
+
+# 启动新版本
+echo "启动 $NEW 版本..."
+docker-compose up -d app_$NEW
+
+# 等待健康检查
+echo "等待 $NEW 版本健康检查..."
+for i in {1..12}; do
+    if docker-compose exec -T app_$NEW curl -f http://localhost:5000/health > /dev/null 2>&1; then
+        echo "$NEW 版本已就绪"
         break
     fi
-    echo "等待 ${NEW_ACTIVE} 实例健康... (${WAITED}/${MAX_WAIT}秒)"
+    if [ $i -eq 12 ]; then
+        echo "$NEW 版本健康检查失败，回滚"
+        docker-compose stop app_$NEW
+        exit 1
+    fi
     sleep 5
-    WAITED=$((WAITED + 5))
 done
 
-if [ ${WAITED} -ge ${MAX_WAIT} ]; then
-    echo "错误: ${NEW_ACTIVE} 实例在 ${MAX_WAIT} 秒内未健康"
-    docker-compose logs app_${NEW_ACTIVE}
-    docker-compose stop app_${NEW_ACTIVE}
-    exit 1
-fi
+# 切换流量（这里假设有专门的切换端点）
+echo "切换流量到 $NEW 版本..."
+# curl -X POST http://localhost/switch?version=$NEW
 
-# 更新 Nginx 配置指向新实例
-echo "更新 Nginx 配置指向 ${NEW_ACTIVE} 实例..."
-cat > nginx/conf.d/default.conf << EOF
-upstream backend {
-    server app_${NEW_ACTIVE}:5000;
-    server app_${CURRENT_ACTIVE}:5000 backup;
-}
+# 停止旧版本
+echo "停止 $ACTIVE 版本..."
+docker-compose stop app_$ACTIVE
 
-server {
-    listen 80;
-    server_name localhost;
-    
-    location / {
-        proxy_pass http://backend;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    }
-    
-    location /health {
-        access_log off;
-        return 200 'healthy\n';
-        add_header Content-Type text/plain;
-    }
-}
-EOF
+# 清理旧镜像
+echo "清理未使用的镜像..."
+docker image prune -f
 
-# 重启 Nginx
-echo "重启 Nginx..."
-docker-compose restart nginx
-
-# 等待 Nginx 健康
-sleep 10
-
-# 可选：运行冒烟测试
-echo "运行冒烟测试..."
-if curl -f http://localhost/health; then
-    echo "冒烟测试通过"
-else
-    echo "错误: 冒烟测试失败"
-    # 回滚到旧实例
-    echo "正在回滚到 ${CURRENT_ACTIVE} 实例..."
-    cat > nginx/conf.d/default.conf << EOF
-upstream backend {
-    server app_${CURRENT_ACTIVE}:5000;
-}
-server {
-    listen 80;
-    location / {
-        proxy_pass http://backend;
-    }
-}
-EOF
-    docker-compose restart nginx
-    docker-compose stop app_${NEW_ACTIVE}
-    exit 1
-fi
-
-# 停止旧实例（可选，保持作为备份）
-echo "停止旧 ${CURRENT_ACTIVE} 实例..."
-docker-compose stop app_${CURRENT_ACTIVE}
-
-echo "=== 部署完成 ==="
-echo "新活跃实例: ${NEW_ACTIVE}"
-echo "旧实例已停止（可作为快速回滚点）"
+echo "部署完成! 当前活跃版本: $NEW"
