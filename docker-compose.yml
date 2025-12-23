@@ -1,0 +1,16 @@
+# docker-compose.yml 中添加
+services:
+  nginx:
+    networks:
+      - frontend
+  app_blue:
+    networks:
+      - frontend
+      - backend
+    expose:
+      - "5000"  # 只暴露给 Nginx，不对外
+
+networks:
+  frontend:
+  backend:
+    internal: true  # 内部网络
