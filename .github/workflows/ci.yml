@@ -18,23 +18,20 @@ jobs:
       with:
         python-version: '3.9'
     
-    - name: Install dependencies
+    - name: Install app dependencies
+      working-directory: ./app
       run: |
-        cd app
         pip install -r requirements.txt
-        cd ..
+    
+    - name: Install test dependencies
+      run: |
         pip install -r requirements-test.txt
     
-    - name: Run unit tests
+    - name: Run tests
       run: |
-        python -m pytest tests/test_app.py --cov=app --cov-report=xml
+        python -m pytest tests/ -v --cov=app --cov-report=xml
     
-    - name: Run functional tests
-      run: |
-        python -m pytest tests/functional_tests/ -v
-      continue-on-error: true  # 功能测试可选，不影响整体构建
-    
-    - name: Upload coverage to Codecov
+    - name: Upload coverage
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.xml
@@ -51,13 +48,22 @@ jobs:
     
     - name: Build Docker image
       run: |
-        docker build -t web-calculator:test .
+        docker build -t web-calculator:${{ github.sha }} .
     
-    - name: Run container tests
+    - name: Test Docker container
       run: |
-        docker run -d --name test-app -p 5000:5000 web-calculator:test
-        sleep 10
-        curl -f http://localhost:5000/health || exit 1
-        curl -f http://localhost:5000/add/2&3 || exit 1
-        docker stop test-app
-        docker rm test-app
+        # 启动容器
+        docker run -d --name test-container -p 5000:5000 web-calculator:${{ github.sha }}
+        
+        # 等待应用启动
+        sleep 5
+        
+        # 测试健康检查
+        curl -f http://localhost:5000/health || (docker logs test-container && exit 1)
+        
+        # 测试计算功能
+        curl -f http://localhost:5000/add/2&3 || (docker logs test-container && exit 1)
+        
+        # 清理
+        docker stop test-container
+        docker rm test-container
