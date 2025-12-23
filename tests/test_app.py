@@ -1,10 +1,10 @@
 import sys
 import os
 
-# 将项目根目录添加到Python路径
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# 添加当前目录到Python路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app.app import app
+from app import app
 
 def test_hello_world():
     """测试首页"""

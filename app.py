@@ -1,13 +1,23 @@
 from flask import Flask, jsonify
-from .entity.calculator import Calculator  # 使用相对导入
 
 app = Flask(__name__)
-calc = Calculator()
 
-# 为了在直接运行脚本时也能正常工作
-if __name__ == '__main__':
-    from entity.calculator import Calculator
-    calc = Calculator()
+class Calculator:
+    def add(self, a, b):
+        return a + b
+    
+    def subtract(self, a, b):
+        return a - b
+    
+    def multiply(self, a, b):
+        return a * b
+    
+    def divide(self, a, b):
+        if b == 0:
+            raise ZeroDivisionError("Division by zero")
+        return a / b
+
+calc = Calculator()
 
 @app.route('/')
 def hello_world():
@@ -36,8 +46,6 @@ def divide(a, b):
         return f"Divide {a} and {b}. Got {result}!"
     except ZeroDivisionError:
         return "Cannot divide by zero", 400
-    except ValueError as e:
-        return str(e), 400
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000)
