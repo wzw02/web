@@ -22,7 +22,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        pip install Flask==2.3.3 pytest pytest-cov
+        pip install Flask==2.3.3 requests==2.31.0  pytest pytest-cov
     
     - name: Run unit tests
       run: |
