@@ -8,7 +8,7 @@
 ├── **tests**- \
 │  ├── **test_app.py** - \
 ├── **docker-cmpose.yml**- \
-├── **docker-cmpose.test.yml**- \
+├── **docker-cmpose.test.yml** \
 ├── **requirements.txt**\
 ├── **app.py**\
 ├── **calculator.py**\
